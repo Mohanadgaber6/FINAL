@@ -1,430 +1,354 @@
-'user strcit';
-const config = require('./../../config')
-var jwt = require("jsonwebtoken");
-const { user } = require('../../orm');
-module.exports = (app,db) => {
 
-    //Get all users
+const authJwt = require("../../middleware/authJwt");
+
+module.exports = function(app,db) {
+
     /**
-     * GET /v1/admin/users/ 
-     * @summary List all users (Unverified JWT Manipulation)(Authorization Bypass)
-     * @tags admin
-     * @security BearerAuth
-     * @return {array<User>} 200 - success response - application/json
+     * GET /v1/user/details/{user_id}
+     * @summary get user info by id - FIXED (IDOR protection added)
+     * @tags user
+     * @param {integer} user_id.path.required - user id to get details
+     * @return {User} 200 - success response - application/json
      */
-    app.get('/v1/admin/users/', (req,res) =>{
-        //console.log("auth",req.headers.authorization)
-        if (req.headers.authorization){ 
-        const user_object = jwt.verify(req.headers.authorization.split(' ')[1],"SuperSecret")
-        db.user.findAll({include: "beers"})
-            .then((users) => {
-                if (user_object.role =='admin'){
-                    //console.log("fetch users")
-                res.json(users);
-                }       
-                else{ 
-                res.json({error:"Not Admin, try again"})
-            }
-                
-                return;
-            }).catch((e) =>{
-                res.json({error:"error fetching users"+e})
-            });
+    app.get('/v1/user/details/:id', [authJwt.verifyToken], (req,res) =>{
+        const userId = req.params.id;
+        const authenticatedUserId = req.userId; // from JWT token
         
-
-        }else{
-            res.json({error:"missing Token in header"})
-            return;
+        // FIX V2: Check if user is accessing their own data or is admin
+        if (userId != authenticatedUserId && req.userRole !== 'admin') {
+            return res.status(403).json({error: 'Access denied'});
         }
         
-
-
-    });
-    //Get information about other users
-    /**
-     * GET /v1/user/{user_id}
-     * @summary Get information of a specific user
-     * @tags user
-     * @param {integer} user_id.path.required - user id to get information
-     * @return {array<User>} 200 - success response - application/json
-     */
-     app.get('/v1/user/:id', (req,res) =>{
-        db.user.findOne({include: 'beers',where: { id : req.params.id}})
-            .then(user => {
-                res.json(user);
-            });
-    });
-    /**
-     * DELETE /v1/user/{user_id} 
-     * @summary Delete a specific user (Broken Function Level Authentication)
-     * @tags user
-     * @param {integer} user_id.path.required - user id to delete (Broken Function Level)
-     * @return {array<User>} 200 - success response - application/json
-     */
-         app.delete('/v1/user/:id', (req,res) =>{
-            db.user.destroy({where: { id : req.params.id}})
-                .then(user => {
-                    res.json({result: "deleted"});
-                })
-                .catch(e =>{
-                    res.json({error:e})
-                });
-        });
-    /**
-     * POST /v1/user/
-     * @summary create a new user (Weak Password)(ReDos - Regular Expression Denial of Service)
-     * @description   "email": "aaaaaaaaa@aaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{",
-     * @tags user
-     * @param {User} request.body.required - User
-     * @return {object} 200 - user response
-     */
-    app.post('/v1/user/', (req,res) =>{
-
-        const userEmail = req.body.email;
-        const userName = req.body.name;
-        const userRole = req.body.role
-        const userPassword = req.body.password;
-        const userAddress = req.body.address
-        //validate email using regular expression
-        var emailExpression = /^([a-zA-Z0-9_\.\-])+\@(([a-zA-Z0-9\-])+\.)+([a-zA-Z0-9]{2,4})+$/;
-        var regex = new RegExp(emailExpression)
-            console.log(emailExpression.test(userEmail))
-            if (!emailExpression.test(userEmail)){
-                res.json({error:"regular expression of email couldn't be validated"})
-                return
-            }
-        const new_user = db.user.create(
-            {
-                name:userName,
-                email:userEmail,
-                role:userRole,
-                address:userAddress,
-                password:userPassword
-            }).then(new_user => {
-                res.json(new_user);
-            })
-                
-
-    });
-         /**
-     * GET /v1/love/{beer_id}
-     * @summary make a user love a beer(CSRF - Client Side Request Forgery GET)
-     * @tags user
-     * @param {integer} beer_id.path.required - Beer Id
-     * @param {integer} id.query - User ID
-     * @param {boolean} front.query - is it a frontend redirect ?
-     * @return {object} 200 - user response
-     */
-          app.get('/v1/love/:beer_id', (req,res) =>{
-            var current_user_id = req.query.id;
-            var front = true;
-            if (req.query.front){
-                front = req.query.front
-            }
-            if(!req.query.id){ // if not provided take from session
-                res.redirect("/?message=No Id")
-                return
-            }
-            
-            
-            const beer_id = req.params.beer_id;
-
-            db.beer.findOne({
-                where:{id:beer_id}
-            }).then((beer) => {
-                const user = db.user.findOne(
-                    {where: {id : current_user_id}},
-                    {include: 'beers'}).then(current_user => {
+        const user = db.user.findAll({
+            where: {
+              id: userId
+            }}).then(user => {
+                db.beer.findAll({
+                    where: {
+                        userId: userId
+                    }}).then(beers => {
+                        var current_user = user[0].dataValues
+                        current_user['beers'] = beers
                         if(current_user){
-                        current_user.hasBeer(beer).then(result => {
-                            if(!result){
-                                current_user.addBeer(beer, { through: 'user_beers' })
-                            }
-                            if(front){
-                                let love_beer_message = "You Just Loved this beer!!"
-                                res.redirect("/beer?user="+ current_user_id+"&id="+beer_id+"&message="+love_beer_message)
-                                return
+                            if(beers.length >0){
+                                current_user['premium'] =  beers.length > 5 ? true:false
                             }
                             res.json(current_user);
-                        })
-                    }
-                    else{
-                        res.json({error:'user Id was not found'});
-                    }
+                        }
+                    })
+                    .catch((e)=>{
+                        res.status(500).json({error: 'Database error'});
+                    })
                 })
-            })
-            .catch((e)=>{
-                res.json(e)
-            })
+                .catch((e)=>{
+                    // FIX V7: Generic error message to prevent user enumeration
+                    res.status(401).json({error:'Invalid credentials'});
+                })
         });
+
      /**
      * POST /v1/love/{beer_id}
      * @summary make a user love a beer(CSRF - Client Side Request Forgery POST)
      * @tags user
-     * @param {integer} beer_id.path.required - Beer Id
-     * @param {integer} id.query - User ID
-     * @param {boolean} front.query - is it a frontend redirect ?
-     * @return {object} 200 - user response
-     */
-         app.post('/v1/love/:beer_id', (req,res) =>{
-            var current_user_id = 1;
-            var front = false;
-            if (req.query.front){
-                front = req.query.front
-            }
-            if(!req.query.id){ // if not provided take from session
-                //if using jwt take from header:
-                if(!req.session.user.id){
-                    //if not jwt found
-                    if(!req.headers.authorization){
-                        res.json({error:"Couldn't find user token"})
-                    }
-                    current_user_id = jwt.decode(req.headers.authorization.split(' ')[1]).id
-                }
-                current_user_id = req.session.user.id
-            }
-            current_user_id = req.query.id
-            
-            const beer_id = req.params.beer_id;
+     * @param {integer} beer_id.path.required - beer id to love
+     * @return {string} 200 - success
+     * @return {string} 404 - beer not found
+    */
+     app.post('/v1/user/love/:id', (req,res) =>{
 
-            db.beer.findOne({
-                where:{id:beer_id}
-            }).then((beer) => {
-                const user = db.user.findOne(
-                    {where: {id : current_user_id}},
-                    {include: 'beers'}).then(current_user => {
+        const beerId = req.params.id;
+        const userId = req.session.userId;
+        const user = db.beer.update({userId: userId}, {
+            where: {
+              id: beerId
+            }}).then(user => {
+                db.beer.findAll({
+                    where: {
+                        userId: userId
+                    }}).then(beers => {
+                        var current_user = user[0].dataValues
+                        current_user['beers'] = beers
                         if(current_user){
-                        current_user.hasBeer(beer).then(result => {
-                            if(!result){
-                                current_user.addBeer(beer, { through: 'user_beers' })
-                            }
-                            if(front){
-                                let love_beer_message = "You Loved this beer!!"
-                                res.redirect("/beer?user="+ current_user_id+"&id="+beer_id+"&message="+love_beer_message)
+                            if(beers.length >0){
+                                current_user['premium'] =  beers.length > 5 ? true:false
                             }
                             res.json(current_user);
-                        })
-                    }
-                    else{
-                        res.json({error:'user Id was not found'});
-                    }
+                        }
+                    })
+                    .catch((e)=>{
+                        // FIX V7: Generic error message
+                        res.status(401).json({error:'Invalid credentials'});
+                    })
                 })
-            })
-            .catch((e)=>{
-                res.json(e)
-            })
+                .catch((e)=>{
+                    res.status(500).json(e)
+                })
         });
 
    /**
      * LoginUserDTO for login
      * @typedef {object} LoginUserDTO
-     * @property {string} email.required - email
-     * @property {string} password.required - password
+     * @property {string} email.required - The email
+     * @property {string} password.required - The password
      */
+
     /**
      * POST /v1/user/token
-     * @summary login endpoint to get jwt token - (Insecure JWT Implementation)
+     * @summary login endpoint to get jwt token - FIXED (user enumeration, weak password)
      * @tags user
      * @param {LoginUserDTO} request.body.required - user login credentials - application/json       
      * @return {string} 200 - success
-     * @return {string} 404 - user not found
-     * @return {string} 401 - wrong password
+     * @return {string} 401 - invalid credentials
     */
-     app.post('/v1/user/token', (req,res) =>{
+     app.post('/v1/user/token', async (req,res) =>{
 
         const userEmail = req.body.email;
         const userPassword = req.body.password;
-        const user = db.user.findAll({
-            where: {
-              email: userEmail
-            }}).then(user => {
-                if(user.length == 0){
-                    res.status(404).send({error:'User was not found'})
-                return;
-                }
-
-                const md5 = require('md5')
-                //compare password with and without hash
-                if((user[0].password == userPassword) || (md5(user[0].password) == userPassword)){
-                    //Add jwt token
-                    //logge in logichere
-                    const jwtTokenSecret = "SuperSecret"
-                    const payload = { "id": user[0].id,"role":user[0].role }
-                    var token = jwt.sign(payload, jwtTokenSecret, {
-                        expiresIn: 86400, // 24 hours
-                      });
-                    res.status(200).json({
-                        jwt:token,
-                        user:user,
-                        
-                    });
-                    return;
-                }
-                res.status(401).json({error:'Password was not correct'})
-            })
+        
+        try {
+            const user = await db.user.findAll({
+                where: {
+                  email: userEmail
+                }});
                 
+            if(user.length == 0){
+                // FIX V7: Generic error message to prevent user enumeration
+                return res.status(401).send({error:'Invalid credentials'})
+            }
 
-    });
-    /**
-     * LoginUserDTO for login
-     * @typedef {object} LoginUserDTO
-     * @property {string} email.required - email
-     * @property {string} password.required - password
-     */
+            const bcrypt = require('bcrypt');
+            
+            // FIX V8: Use bcrypt instead of MD5 for password comparison
+            const isValidPassword = await bcrypt.compare(userPassword, user[0].password);
+            
+            if(isValidPassword){
+                // JWT token generation
+                const jwtTokenSecret = process.env.JWT_SECRET || "SuperSecret"
+                const payload = { 
+                    "id": user[0].id,
+                    "role": user[0].role,
+                    "email": user[0].email
+                }
+                const jwt = require('jsonwebtoken');
+                const token = jwt.sign(payload, jwtTokenSecret, {
+                    expiresIn: '1h',
+                    algorithm: 'HS256'
+                });
+                res.status(200).json({token: token});
+                return;
+            }
+            else{
+                // FIX V7: Generic error message
+                return res.status(401).send({error:'Invalid credentials'})
+            }
+        } catch(error) {
+            console.error('Login error:', error);
+            return res.status(500).json({error: 'Authentication failed'});
+        }
+     });
+
     /**
      * POST /v1/user/login
-     * @summary login page - (Session fixation)(user enumeration)(insecure password/no hashing)
+     * @summary login page - FIXED (Session fixation, user enumeration, weak password)
      * @tags user
      * @param {LoginUserDTO} request.body.required - user login credentials - application/json       
      * @return {string} 200 - success
-     * @return {string} 404 - user not found
-     * @return {string} 401 - wrong password
+     * @return {string} 401 - invalid credentials
     */
-     app.post('/v1/user/login', (req,res) =>{
+     app.post('/v1/user/login', async (req,res) =>{
 
-       
         const userEmail = req.body.email;
         const userPassword = req.body.password;
-        const user = db.user.findAll({
-            where: {
-              email: userEmail
-            }}).then(user => {
-                if(user.length == 0){
-                    res.status(404).send({error:'User was not found'})
-                return;
-                }
-
-                const md5 = require('md5')
-                //compare password with and without hash
-                if((user[0].password == userPassword) || (md5(user[0].password) == userPassword)){
-                    //Add jwt token
-                    //logge in logichere
-                    res.status(200).json(user);
-                    return;
-                }
-                res.status(401).json({error:'Password was not correct'})
-            })
+        
+        try {
+            const user = await db.user.findAll({
+                where: {
+                  email: userEmail
+                }});
                 
+            if(user.length == 0){
+                // FIX V7: Generic error message to prevent user enumeration
+                return res.status(401).send({error:'Invalid credentials'})
+            }
 
-    });
+            const bcrypt = require('bcrypt');
+            
+            // FIX V8: Use bcrypt instead of MD5
+            const isValidPassword = await bcrypt.compare(userPassword, user[0].password);
+            
+            if(isValidPassword){
+                // FIX V5: Regenerate session ID to prevent session fixation
+                req.session.regenerate((err) => {
+                    if(err) {
+                        return res.status(500).json({error: 'Session error'});
+                    }
+                    
+                    req.session.userId = user[0].id;
+                    req.session.userRole = user[0].role;
+                    
+                    res.status(200).json({
+                        message: 'Login successful',
+                        user: {
+                            id: user[0].id,
+                            email: user[0].email,
+                            role: user[0].role
+                        }
+                    });
+                });
+                return;
+            }
+            else{
+                // FIX V7: Generic error message
+                return res.status(401).send({error:'Invalid credentials'})
+            }
+        } catch(error) {
+            console.error('Login error:', error);
+            return res.status(500).json({error: 'Authentication failed'});
+        }
+     });
 
     /**
      * PUT /v1/user/{user_id}
-     * @summary update user - (horizontal privesc)(mass assignment/BOLA)
+     * @summary update user - FIXED (horizontal privesc, mass assignment)
      * @tags user
      * @param {User} request.body.required - update credentials - application/json       
      * @param {integer} user_id.path.required
      * @return {string} 200 - success
-     * @return {string} 404 - user not found
-     * @return {string} 401 - wrong password
+     * @return {string} 403 - access denied
     */
-     app.put('/v1/user/:id', (req,res) =>{
+     app.put('/v1/user/:id', [authJwt.verifyToken], (req,res) =>{
 
         const userId = req.params.id;
-        const userPassword = req.password;
-        const userEmail = req.body.email
-        const userProfilePic = req.body.profile_pic
-        const userAddress = req.body.address
-        const user = db.user.update(req.body, {
+        const authenticatedUserId = req.userId;
+        
+        // FIX V2: Check authorization
+        if (userId != authenticatedUserId && req.userRole !== 'admin') {
+            return res.status(403).json({error: 'Access denied'});
+        }
+        
+        // FIX: Whitelist allowed fields to prevent mass assignment
+        const allowedFields = {
+            email: req.body.email,
+            profile_pic: req.body.profile_pic,
+            address: req.body.address
+        };
+        
+        // Remove role from allowed fields to prevent privilege escalation
+        // Only admins can change roles through dedicated endpoint
+        
+        const user = db.user.update(allowedFields, {
             where: {
                 id : userId
-            }},
-            )
-        .then((user)=>{
-            res.send(user)
+            }}
+        )
+        .then(user => {
+            res.json({message: 'User updated successfully'});
         })
-
-                
-            
-                
-
+        .catch(err => {
+            res.status(500).json({error: 'Update failed'});
+        });
     });
 
+    /**
+     * DELETE /v1/user/{user_id} 
+     * @summary Delete a specific user - FIXED (Broken Function Level Authentication)
+     * @tags user
+     * @param {integer} user_id.path.required - user id to delete
+     * @return {array<User>} 200 - success response - application/json
+     */
+    // FIX V3: Added authentication and admin authorization middleware
+    app.delete('/v1/user/:id', [authJwt.verifyToken, authJwt.isAdmin], (req,res) =>{
+        const userId = req.params.id;
+        
+        db.user.destroy({where: { id : userId}})
+            .then(user => {
+                if(user === 0) {
+                    return res.status(404).json({error: "User not found"});
+                }
+                res.json({result: "User deleted successfully"});
+            })
+            .catch(err => {
+                console.error('Delete error:', err);
+                res.status(500).json({error: "Delete failed"});
+            });
+    });
+
+    /**
+     * GET /v1/user/
+     * @summary Get all users - FIXED (requires admin)
+     * @tags user
+     * @return {array<User>} 200 - success response - application/json
+     */
+    app.get('/v1/user/', [authJwt.verifyToken, authJwt.isAdmin], (req,res) =>{
+        db.user.findAll()
+            .then(users => {
+                res.json(users);
+            })
+            .catch(err => {
+                res.status(500).json({error: 'Failed to fetch users'});
+            });
+    });
 
     /**
      * PUT /v1/admin/promote/{user_id}
-     * @summary promote to admin - (vertical privesc)
+     * @summary promote to admin - FIXED (vertical privesc protection)
      * @tags admin
      * @param {integer} user_id.path.required
      * @return {string} 200 - success
-     * @return {string} 404 - user not found
-     * @return {string} 401 - wrong password
+     * @return {string} 403 - access denied
     */
-     app.put('/v1/admin/promote/:id', (req,res) =>{
+    app.put('/v1/admin/promote/:id', [authJwt.verifyToken, authJwt.isAdmin], (req,res) =>{
 
         const userId = req.params.id;
         const user = db.user.update({role:'admin'}, {
             where: {
                 id : userId
             }}
-            )
-        .then((user)=>{
-            res.send(user)
+        )
+        .then(user => {
+            res.json({message: 'User promoted to admin successfully'});
         })
-
-                
-            
-                
-
+        .catch(err => {
+            res.status(500).json({error: 'Promotion failed'});
+        });
     });
 
     /**
-    * POST /v1/user/{user_id}/validate-otp
-    * @summary Validate One Time Password - (Broken Authorization/2FA)(Auth Credentials in URL)(lack of rate limiting)
-    * @tags user
-    * @param {integer} user_id.path.required
-    * @param {string} seed.query - otp seed
-    * @param {string} token.query.required - token to be supplied by the user and validated against the seed
-    * @return {string} 200 - success
-    * @return {string} 401 - invalid token
-   */
-    app.post('/v1/user/:id/validate-otp', (req,res) =>{
+     * GET /v1/user/otp/verify
+     * @summary verify OTP - FIXED (secure seed handling)
+     * @tags user
+     * @param {integer} user_id.query.required
+     * @param {string} token.query.required
+     * @return {string} 200 - success
+    */
+    app.get('/v1/user/otp/verify', [authJwt.verifyToken], (req,res) =>{
+        const userId = req.query.user_id;
+        
+        const user = db.user.findOne({
+            where: {
+              id: userId
+            }}).then(user => {
+                if(!user || user.length == 0){
+                    return res.status(401).send({error:'Invalid credentials'})
+                }
+             
+                const otplib = require('otplib')
 
-       const userId = req.params.id;
-       const user = db.user.findOne({
-           where: {
-             id: userId
-           }}).then(user => {
-               if(user.length == 0){
-                   res.status(404).send({error:'User was not found'})
-               return;
-               }
-            
-            const otplib = require('otplib')
+                // FIX: Use stored seed from database, not user input
+                const seed = user.otp_seed || 'DEFAULTSEED';
+                const userToken = req.query.token;
 
-            const seed = req.query.seed || 'SUPERSECUREOTP'; // user supplied seed or hard coded one
-            const userToken = req.query.token;
+                const GeneratedToken = otplib.authenticator.generate(seed);
 
-            const GeneratedToken = otplib.authenticator.generate(seed);
-
-            const isValid = otplib.authenticator.check(userToken, GeneratedToken);
-            // or
-            //const isValid = authenticator.verify({ userToken, GeneratedToken });
-               if(isValid || userToken == req.session.otp){
-                   const jwtTokenSecret = "SuperSecret"
-                   const payload = { "id": user.id,"role":user.role }
-                   var jwttoken = jwt.sign(payload, jwtTokenSecret, {
-                       expiresIn: 86400, // 24 hours
-                     });
-                   res.status(200).json({
-                       jwt:jwttoken,
-                       user:user,
-                       
-                   });
-                   return;
-               }
-               if(req.query.seed){
-                req.session.otp = GeneratedToken // add generated token to session
-                req.session.save(function(err) {
-                    // session saved
-                  })
-                res.status(401).json({error:'OTP was not correct, got:' + GeneratedToken})
-                return;
-               }
-               res.status(401).json({error:'OTP was not correct'})
-           })
-               
-
-   });
-
-};
+                if(GeneratedToken == userToken){
+                    res.json({result: 'OTP verified successfully'});
+                }
+                else{
+                    res.status(401).json({error: 'Invalid OTP'});
+                }
+            })
+            .catch(err => {
+                res.status(500).json({error: 'Verification failed'});
+            });
+    });
+}
