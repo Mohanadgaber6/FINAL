@@ -1,0 +1,29 @@
+rules:
+  - id: user-enumeration-different-messages
+    languages: [javascript]
+    severity: WARNING
+    message: |
+      User enumeration vulnerability detected. The application returns different 
+      error messages for valid vs invalid users ("User was not found" vs other errors).
+      This allows attackers to enumerate valid user accounts.
+      
+      Recommendation: Use generic error messages like "Invalid credentials" for all 
+      authentication failures.
+    metadata:
+      category: security
+      cwe: "CWE-204: Observable Response Discrepancy"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+      confidence: HIGH
+      vulnerability_class: "Information Disclosure"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              res.status($CODE).send({error:'User was not found'})
+          - pattern: |
+              res.status($CODE).send({error:"User was not found"})
+          - pattern: |
+              res.json({error:'user Id was not found'})
+          - pattern: |
+              res.json({error:"user Id was not found"})
+      - pattern-inside: |
+          app.post($PATH, ...)

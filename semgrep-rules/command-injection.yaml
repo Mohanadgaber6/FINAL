@@ -1,0 +1,29 @@
+rules:
+  - id: command-injection-execsync
+    languages: [javascript]
+    severity: ERROR
+    message: |
+      Command Injection vulnerability detected. User input from req.params is 
+      concatenated directly into a shell command executed via execSync without 
+      sanitization. This allows attackers to execute arbitrary system commands.
+      
+      Recommendation: Never concatenate user input into shell commands. Use 
+      parameterized APIs or validate/sanitize input strictly.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      vulnerability_class: "Command Injection"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              execSync($CMD + req.params.$PARAM)
+          - pattern: |
+              execSync($CMD + req.query.$PARAM)
+          - pattern: |
+              execSync(`$CMD${req.params.$PARAM}`)
+          - pattern: |
+              execSync(`$CMD${req.query.$PARAM}`)
+      - pattern-inside: |
+          app.$METHOD($PATH, ...)

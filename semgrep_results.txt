@@ -1,0 +1,168 @@
+                    
+                    
+┌──────────────────┐
+│ 16 Code Findings │
+└──────────────────┘
+                                                
+  [36m[22m[24m  src/router/routes/frontend.js[0m
+    ❯❱ javascript.express.security.express-insecure-template-usage.express-insecure-template-usage
+          User data from `req` is being compiled into the template, which can lead to a Server Side Template
+          Injection (SSTI) vulnerability.                                                                   
+          Details: https://sg.run/b49v                                                                      
+                                                                                                            
+           17┆ rendered = nunjucks.renderString(message);
+            ⋮┆----------------------------------------
+           40┆ rendered = nunjucks.renderString(message);
+                                             
+  [36m[22m[24m  src/router/routes/order.js[0m
+    ❯❱ javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
+          Possible writing outside of the destination, make sure that the target path is nested in the
+          intended destination                                                                        
+          Details: https://sg.run/weRn                                                                
+                                                                                                      
+           33┆ fs.readFile(path.join(__dirname, filePath),function(err,data){
+   
+   ❯❯❱ javascript.sequelize.security.audit.sequelize-injection-express.express-sequelize-injection
+          Detected a sequelize statement that is tainted by user-input. This could lead to SQL injection if   
+          the variable is user-controlled and is not properly sanitized. In order to prevent SQL injection, it
+          is recommended to use parameterized queries or prepared statements.                                 
+          Details: https://sg.run/gjoe                                                                        
+                                                                                                              
+           67┆ const beers = db.sequelize.query(sql, { type: 'RAW' }).then(beers => {
+                                              
+  [36m[22m[24m  src/router/routes/system.js[0m
+    ❯❱ javascript.express.security.audit.xss.direct-response-write.direct-response-write
+          Detected directly writing to a Response object from user-defined input. This bypasses any HTML      
+          escaping and may expose your application to a Cross-Site-scripting (XSS) vulnerability. Instead, use
+          'resp.render()' to render safely escaped HTML.                                                      
+          Details: https://sg.run/vzGl                                                                        
+                                                                                                              
+           18┆ res.send(test)
+   
+    ❯❱ javascript.express.security.audit.express-open-redirect.express-open-redirect
+          The application redirects to a URL specified by user-supplied input `req` that is not validated.   
+          This could redirect users to malicious locations. Consider using an allow-list approach to validate
+          URLs, or warn users they are being redirected to a third-party website.                            
+          Details: https://sg.run/EpoP                                                                       
+                                                                                                             
+           37┆ res.redirect(url);
+   
+    ❯❱ javascript.express.security.audit.express-third-party-object-deserialization.express-third-party-object-
+       deserialization                                                                                         
+          The following function call serialize.unserialize accepts user controlled data which can result in
+          Remote Code Execution (RCE) through Object Deserialization. It is recommended to use secure data  
+          processing alternatives such as JSON.parse() and Buffer.from().                                   
+          Details: https://sg.run/8W5j                                                                      
+                                                                                                            
+           64┆ var deser = serialize.unserialize(body)
+                                            
+  [36m[22m[24m  src/router/routes/user.js[0m
+    ❯❱ javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
+          A hard-coded credential was detected. It is not recommended to store credentials in source-code, as
+          this risks secrets being leaked and used by either an internal or external malicious adversary. It 
+          is recommended to use environment variables to securely provide credentials or retrieve credentials
+          from a secure vault or HSM (Hardware Security Module).                                             
+          Details: https://sg.run/4xN9                                                                       
+                                                                                                             
+           18┆ const user_object = jwt.verify(req.headers.authorization.split(' ')[1],"SuperSecret")
+            ⋮┆----------------------------------------
+          253┆ var token = jwt.sign(payload, jwtTokenSecret, {
+            ⋮┆----------------------------------------
+          406┆ var jwttoken = jwt.sign(payload, jwtTokenSecret, {
+                                
+  [36m[22m[24m  src/server.js[0m
+    ❯❱ javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-domain
+          Default session middleware settings: `domain` not set. It indicates the domain of the cookie; use it
+          to compare against the domain of the server in which the URL is being requested. If they match, then
+          check the path attribute next.                                                                      
+          Details: https://sg.run/rd41                                                                        
+                                                                                                              
+           43┆ app.use(session({
+           44┆   genid:function(req){
+           45┆     if ( (req.session) && (req.session.uid) ) {
+           46┆       return req.session.uid + "_" + 123;
+           47┆       //    return new Date().getTime().toString();
+           48┆
+           49┆     } else {
+           50┆       return new Date().getTime().toString();
+           51┆     }
+           52┆   },
+             [hid 9 additional lines, adjust with --max-lines-per-finding] 
+   
+    ❯❱ javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-expires
+          Default session middleware settings: `expires` not set. Use it to set expiration date for persistent
+          cookies.                                                                                            
+          Details: https://sg.run/N4eG                                                                        
+                                                                                                              
+           43┆ app.use(session({
+           44┆   genid:function(req){
+           45┆     if ( (req.session) && (req.session.uid) ) {
+           46┆       return req.session.uid + "_" + 123;
+           47┆       //    return new Date().getTime().toString();
+           48┆
+           49┆     } else {
+           50┆       return new Date().getTime().toString();
+           51┆     }
+           52┆   },
+             [hid 9 additional lines, adjust with --max-lines-per-finding] 
+   
+    ❯❱ javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-httponly
+          Default session middleware settings: `httpOnly` not set. It ensures the cookie is sent only over
+          HTTP(S), not client JavaScript, helping to protect against cross-site scripting attacks.        
+          Details: https://sg.run/ydBO                                                                    
+                                                                                                          
+           43┆ app.use(session({
+           44┆   genid:function(req){
+           45┆     if ( (req.session) && (req.session.uid) ) {
+           46┆       return req.session.uid + "_" + 123;
+           47┆       //    return new Date().getTime().toString();
+           48┆
+           49┆     } else {
+           50┆       return new Date().getTime().toString();
+           51┆     }
+           52┆   },
+             [hid 9 additional lines, adjust with --max-lines-per-finding] 
+   
+    ❯❱ javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-path
+          Default session middleware settings: `path` not set. It indicates the path of the cookie; use it to
+          compare against the request path. If this and domain match, then send the cookie in the request.   
+          Details: https://sg.run/b7pd                                                                       
+                                                                                                             
+           43┆ app.use(session({
+           44┆   genid:function(req){
+           45┆     if ( (req.session) && (req.session.uid) ) {
+           46┆       return req.session.uid + "_" + 123;
+           47┆       //    return new Date().getTime().toString();
+           48┆
+           49┆     } else {
+           50┆       return new Date().getTime().toString();
+           51┆     }
+           52┆   },
+             [hid 9 additional lines, adjust with --max-lines-per-finding] 
+   
+    ❯❱ javascript.express.security.audit.express-cookie-settings.express-cookie-session-no-secure
+          Default session middleware settings: `secure` not set. It ensures the browser only sends the cookie
+          over HTTPS.                                                                                        
+          Details: https://sg.run/9oKz                                                                       
+                                                                                                             
+           43┆ app.use(session({
+           44┆   genid:function(req){
+           45┆     if ( (req.session) && (req.session.uid) ) {
+           46┆       return req.session.uid + "_" + 123;
+           47┆       //    return new Date().getTime().toString();
+           48┆
+           49┆     } else {
+           50┆       return new Date().getTime().toString();
+           51┆     }
+           52┆   },
+             [hid 9 additional lines, adjust with --max-lines-per-finding] 
+   
+    ❯❱ javascript.express.security.audit.express-session-hardcoded-secret.express-session-hardcoded-secret
+          A hard-coded credential was detected. It is not recommended to store credentials in source-code, as
+          this risks secrets being leaked and used by either an internal or external malicious adversary. It 
+          is recommended to use environment variables to securely provide credentials or retrieve credentials
+          from a secure vault or HSM (Hardware Security Module).                                             
+          Details: https://sg.run/LYvG                                                                       
+                                                                                                             
+           57┆ secret: 'SuperSecret',
+

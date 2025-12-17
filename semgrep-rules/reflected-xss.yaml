@@ -1,0 +1,23 @@
+rules:
+  - id: reflected-xss-unsanitized-input
+    languages: [javascript]
+    severity: ERROR
+    message: |
+      Reflected XSS vulnerability detected. User-controlled input from req.params 
+      is directly written to the response without sanitization via execSync output.
+      This allows attackers to inject malicious scripts.
+      
+      Recommendation: Sanitize all user input before including in responses. Use 
+      Content Security Policy headers and encode output appropriately.
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+    patterns:
+      - pattern: |
+          execSync($CMD + req.params.$PARAM)
+      - pattern: res.send($VAR)
+      - pattern-inside: |
+          app.get($PATH, ...)

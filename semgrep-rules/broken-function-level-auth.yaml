@@ -1,0 +1,26 @@
+rules:
+  - id: missing-admin-role-check
+    languages: [javascript]
+    severity: ERROR
+    message: |
+      Broken Function Level Authorization detected. Sensitive DELETE operation 
+      on user accounts has no role-based access control. Any authenticated user 
+      can delete other users.
+      
+      Recommendation: Implement middleware to verify admin role before allowing 
+      access to sensitive endpoints. Example: [authJwt.verifyToken, authJwt.isAdmin]
+    metadata:
+      category: security
+      cwe: "CWE-285: Improper Authorization"
+      owasp: "A01:2021 - Broken Access Control"
+      confidence: HIGH
+      vulnerability_class: "Broken Function Level Authorization"
+    patterns:
+      - pattern: |
+          app.delete('/v1/user/:id', (req,res) =>{
+            $BODY
+          })
+      - pattern-not-inside: |
+          app.delete($PATH, [authJwt.verifyToken, authJwt.isAdmin], ...)
+      - pattern-not-inside: |
+          app.delete($PATH, authMiddleware.isAdmin, ...)

@@ -1,0 +1,33 @@
+rules:
+  - id: ssrf-user-controlled-url
+    languages: [javascript]
+    severity: ERROR
+    message: |
+      Server-Side Request Forgery (SSRF) vulnerability detected. User-controlled 
+      URL from query parameters is used directly in HTTP request without validation.
+      This allows attackers to make requests to internal services or arbitrary URLs.
+      
+      Recommendation: Validate and whitelist allowed URLs/domains. Never trust 
+      user input for making server-side requests.
+    metadata:
+      category: security
+      cwe: "CWE-918: Server-Side Request Forgery (SSRF)"
+      owasp: "A10:2021 - Server-Side Request Forgery"
+      confidence: HIGH
+      vulnerability_class: "Server-Side Request Forgery"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              var $URL = req.query.url
+              ...
+              requests.get($URL)
+          - pattern: |
+              var $URL = req.query.url
+              ...
+              axios.get($URL)
+          - pattern: |
+              const $URL = req.query.url
+              ...
+              requests.get($URL)
+      - pattern-inside: |
+          app.get($PATH, ...)
