@@ -1,75 +1,49 @@
-'user strcit';
-var fs = require('fs')
-module.exports = (app,db) => {
-    //https://github.com/BRIKEV/express-jsdoc-swagger
-    //Get all the beers available for ordering
-    /**
-     * GET /v1/order
-     * @summary Use to list all available beer(Excessive Data Exposure)(PII Exposure/Oversharing)
-     * @tags beer
-     * @return {array<Beer>} 200 - success response - application/json
-     */
-    app.get('/v1/order', (req,res) =>{
-        db.beer.findAll({include: "users"})
-            .then(beer => {
-                res.json(beer);
-            });
-    });
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+
+module.exports = function (app, db) {
+
     /**
      * GET /v1/beer-pic/
-     * @summary Get a picture of a beer (Path Traversal)
-     * @note http://localhost:5000/v1/beer-pic/?picture=../.env
-     * @param {string} picture.query.required picture identifier
-     * @tags beer
+     * FIXED: Path Traversal
      */
-     app.get('/v1/beer-pic/', (req,res) =>{
-            var filename = req.query.picture,
-            filePath = `../../../uploads/${filename}`;
-            const path=require('path')
-            //console.log(__dirname)
-            //console.log(path.dirname(filePath))
+    app.get('/v1/beer-pic/', (req, res) => {
 
-            //path.normalize(filePath)
-            fs.readFile(path.join(__dirname, filePath),function(err,data){
-                if (err){
-                    res.send("error")
-                }else{
-                    if(filename.split('.').length == 1)
-                    {
-                        res.type('image/jpeg')
-                        //res.set('Content-Type', 'image/jpg');
-                        res.send(data)
-                        return;
-                }
-                let buffer = Buffer.from(data, 'utf8');
-                res.send(buffer)
-                    
-                }
-                
-            })
+        const picture = req.query.picture;
 
-        
+        // 1️⃣ لازم picture
+        if (!picture) {
+            return res.status(400).json({ error: "Missing picture parameter" });
+        }
+
+        // 2️⃣ Allowlist للامتدادات
+        const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif'];
+        const ext = path.extname(picture).toLowerCase();
+
+        if (!allowedExtensions.includes(ext)) {
+            return res.status(403).json({ error: "Invalid file type" });
+        }
+
+        // 3️⃣ فولدر الصور المسموح
+        const baseDir = path.join(__dirname, '../../public/images');
+
+        // 4️⃣ Normalize
+        const safePath = path.normalize(path.join(baseDir, picture));
+
+        // 5️⃣ منع الخروج برا الفولدر
+        if (!safePath.startsWith(baseDir)) {
+            return res.status(403).json({ error: "Access denied" });
+        }
+
+        // 6️⃣ الملف لازم يكون موجود
+        if (!fs.existsSync(safePath)) {
+            return res.status(404).json({ error: "File not found" });
+        }
+
+        // 7️⃣ رجّع الصورة
+        res.sendFile(safePath);
     });
-        /**
-     * GET /v1/search/{filter}/{query}
-     * @summary Search for a specific beer (SQL Injection)
-     * @description sqlmap -u 'http://localhost:5000/search/id/2*'
-     * @tags beer
-     * @param {string} query.path - the query to search for
-     * @param {string} filter.path - the column
-     * @return {array<Beer>} 200 - success response - application/json
-     */
-         app.get('/v1/search/:filter/:query', (req,res) =>{
-            const filter = req.params.filter
-            const query = req.params.query
-                const sql = "SELECT * FROM beers WHERE "+filter+" = '"+query+"'";
 
-                const beers = db.sequelize.query(sql, { type: 'RAW' }).then(beers => {
-                    res.status(200).send(beers);
-
-                }).catch(function (err) {
-                    res.status(501).send("error, query failed: "+err)
-                  })
-        
-        });
 };
