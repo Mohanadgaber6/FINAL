@@ -1,0 +1,6 @@
+node_modules/
+db/db.sqlite
+app.log
+app_err.log
+*.old
+traversal_test.txt
