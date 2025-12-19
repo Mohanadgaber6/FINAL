@@ -1,36 +1,28 @@
 'use strict';
 
-module.exports = (app, db) => {
+const xss = require("xss");
+const bcrypt = require("bcrypt");
 
-    const xss = require("xss");
+module.exports = (app, db) => {
 
     /**
      * GET /
      * Frontend entry page
-     * FIXED: XSS + SSTI
+     * FIXED: XSS
      */
     app.get('/', (req, res) => {
-        console.log(req.session);
-
         const message = xss(req.query.message || "Please log in to continue");
-
-        res.render('user.html', {
-            message: message
-        });
+        res.render('user.html', { message });
     });
 
     /**
      * GET /register
      * Frontend register page
-     * FIXED: XSS + SSTI
+     * FIXED: XSS
      */
     app.get('/register', (req, res) => {
-
         const message = xss(req.query.message || "Please register to continue");
-
-        res.render('user-register.html', {
-            message: message
-        });
+        res.render('user-register.html', { message });
     });
 
     /**
@@ -39,35 +31,41 @@ module.exports = (app, db) => {
      * FIXED: Weak password hashing (MD5 → bcrypt)
      */
     app.get('/registerform', async (req, res) => {
-
-        const userEmail = req.query.email;
-        const userName = req.query.name;
-        const userPassword = req.query.password;
-        const userAddress = req.query.address;
-        const userRole = 'user';
-
-        const emailExpression = /^([a-zA-Z0-9_\.\-])+\@(([a-zA-Z0-9\-])+\.)+([a-zA-Z0-9]{2,4})+$/;
-
-        if (!emailExpression.test(userEmail)) {
-            return res.redirect("/register?message=Invalid email address");
-        }
-
         try {
-            const bcrypt = require("bcrypt");
-            const hashedPassword = await bcrypt.hash(userPassword, 12);
+            const { email, name, password, address } = req.query;
 
+            // Basic validation
+            if (!email || !name || !password) {
+                return res.redirect('/register?message=Missing required fields');
+            }
+
+            // Email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                return res.redirect('/register?message=Invalid email address');
+            }
+
+            // Hash password
+            const hashedPassword = await bcrypt.hash(password, 12);
+
+            // Create user
             const newUser = await db.user.create({
-                name: userName,
-                email: userEmail,
-                role: userRole,
-                address: userAddress,
+                name,
+                email,
+                role: 'user',
+                address,
                 password: hashedPassword
             });
 
-            res.redirect('/profile?id=' + newUser.id);
+            // Regenerate session (important)
+            req.session.regenerate(() => {
+                req.session.logged = true;
+                req.session.userId = newUser.id;
+                res.redirect('/profile?id=' + newUser.id);
+            });
 
         } catch (error) {
-            console.error(error);
+            console.error("REGISTER ERROR:", error);
             res.redirect('/?message=Error registering user');
         }
     });
@@ -78,33 +76,35 @@ module.exports = (app, db) => {
      * FIXED: User Enumeration + Weak Password
      */
     app.get('/login', async (req, res) => {
-
-        const userEmail = req.query.email;
-        const userPassword = req.query.password;
-
         try {
+            const { email, password } = req.query;
+
+            if (!email || !password) {
+                return res.redirect('/?message=Invalid email or password');
+            }
+
             const users = await db.user.findAll({
-                where: { email: userEmail }
+                where: { email }
             });
 
             if (users.length === 0) {
                 return res.redirect('/?message=Invalid email or password');
             }
 
-            const bcrypt = require("bcrypt");
-            const isValid = await bcrypt.compare(userPassword, users[0].password);
+            const isValid = await bcrypt.compare(password, users[0].password);
 
             if (!isValid) {
                 return res.redirect('/?message=Invalid email or password');
             }
 
-            req.session.logged = true;
-            req.session.userId = users[0].id;
-
-            res.redirect('/profile?id=' + users[0].id);
+            req.session.regenerate(() => {
+                req.session.logged = true;
+                req.session.userId = users[0].id;
+                res.redirect('/profile?id=' + users[0].id);
+            });
 
         } catch (error) {
-            console.error(error);
+            console.error("LOGIN ERROR:", error);
             res.redirect('/?message=Login failed');
         }
     });
@@ -136,15 +136,14 @@ module.exports = (app, db) => {
             const beers = await db.beer.findAll();
 
             res.render('profile.html', {
-                user: user,
-                beers: beers
+                user,
+                beers
             });
 
         } catch (error) {
-            console.error(error);
+            console.error("PROFILE ERROR:", error);
             res.redirect('/?message=Profile error');
         }
     });
 
 };
-
